@@ -1,0 +1,50 @@
+from kafka import KafkaConsumer, KafkaProducer, errors
+import json
+import sys
+
+# Kafka config
+KAFKA_BROKER = 'localhost:9092'
+SOURCE_TOPIC = 'stock-topic'
+TARGET_TOPIC = 'processed-topic'
+GROUP_ID = 'stock-consumer-to-kafka'
+
+# Step 1: Create Kafka Producer
+try:
+    producer = KafkaProducer(
+        bootstrap_servers=KAFKA_BROKER,
+        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+        retries=5
+    )
+    print("✅ Producer connected to Kafka broker at", KAFKA_BROKER)
+except errors.NoBrokersAvailable:
+    print("❌ Kafka broker not available at", KAFKA_BROKER)
+    sys.exit(1)
+
+# Step 2: Create Kafka Consumer
+try:
+    consumer = KafkaConsumer(
+        SOURCE_TOPIC,
+        bootstrap_servers=KAFKA_BROKER,
+        group_id=GROUP_ID,
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+    )
+    print(f"✅ Consumer connected to Kafka broker at {KAFKA_BROKER}, listening on {SOURCE_TOPIC}")
+except Exception as e:
+    print("❌ Kafka consumer error:", str(e))
+    sys.exit(1)
+
+# Step 3: Consume and produce to another topic
+print(f"🔄 Forwarding messages from {SOURCE_TOPIC} → {TARGET_TOPIC}")
+try:
+    for message in consumer:
+        data = message.value
+        # Here you could transform/clean data if needed
+        producer.send(TARGET_TOPIC, value=data)
+        print(f"📤 Forwarded to {TARGET_TOPIC}: {data}")
+except KeyboardInterrupt:
+    print("\n🛑 Stopped manually.")
+finally:
+    consumer.close()
+    producer.close()
