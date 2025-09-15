@@ -1,0 +1,55 @@
+from kafka import KafkaConsumer, errors
+from pymongo import MongoClient
+import json
+import sys
+
+# Kafka config
+KAFKA_BROKER = 'localhost:9092'
+TOPIC = 'stock-topic'
+GROUP_ID = 'stock-consumer-group'
+
+# MongoDB config
+MONGO_URI = 'mongodb+srv://mongoadmin:mongoadmin@cluster0.ceikf.mongodb.net/'
+DB_NAME = 'superstore_data_consumer'
+COLLECTION_NAME = 'superstore_collection'
+
+# Step 1: Connect to MongoDB
+try:
+    mongo_client = MongoClient(MONGO_URI)
+    db = mongo_client[DB_NAME]
+    collection = db[COLLECTION_NAME]
+    print("✅ Connected to MongoDB")
+except Exception as e:
+    print("❌ MongoDB connection error:", str(e))
+    sys.exit(1)
+
+# Step 2: Create Kafka consumer
+try:
+    consumer = KafkaConsumer(
+        TOPIC,
+        bootstrap_servers=KAFKA_BROKER,
+        group_id=GROUP_ID,
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+    )
+    print("✅ Connected to Kafka broker at", KAFKA_BROKER)
+except errors.NoBrokersAvailable:
+    print("❌ Kafka broker not available at", KAFKA_BROKER)
+    sys.exit(1)
+except Exception as e:
+    print("❌ Kafka consumer error:", str(e))
+    sys.exit(1)
+
+# Step 3: Consume messages and insert into MongoDB
+print(f"📡 Listening on topic: {TOPIC}")
+try:
+    for message in consumer:
+        stock_data = message.value
+        collection.insert_one(stock_data)
+        print(f"✅ Inserted into MongoDB: {stock_data}")
+except KeyboardInterrupt:
+    print("\n🛑 Consumer stopped manually.")
+finally:
+    consumer.close()
+    mongo_client.close()
